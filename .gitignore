@@ -1,0 +1,17 @@
+# Build output
+target/
+
+# Test results, JFR recordings and generated reports
+results/
+*.jfr
+*.log
+
+# Local configuration and secrets
+.env
+.env.*
+*.private.*
+
+# IDE and OS files
+.idea/
+*.iml
+.DS_Store

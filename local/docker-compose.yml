@@ -1,0 +1,96 @@
+# Local test stack with production-sized limits, separate from the developer stack in ../health-app:
+# its own project name, ports (15432 / 18080 / 18081), network and volume. Run it through ./local/perf-stack.sh.
+#
+# Production limits (2026-11-21): backend 0.5 vCPU / 1 GB, Keycloak 0.25 vCPU / 1 GB, RDS db.t4g.small (2 vCPU / 2 GB).
+# Keycloak gets more CPU here because it is not under test locally (it runs start-dev); it is measured on AWS dev.
+name: diecik-perf
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ../../health-app/db-init:/docker-entrypoint-initdb.d:ro
+    cpus: 2
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      retries: 30
+    networks:
+      perf:
+        # The backend's docker profile expects this host name.
+        aliases: [postgres-dev]
+
+  keycloak:
+    image: helti/keycloak-local:dev
+    command: [start-dev]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-dev:5432/keycloakdb
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      FRONTEND_PUBLIC_URL: http://localhost:3000
+      KEYCLOAK_BASE_URL: http://localhost:18080
+      REALM_NAME: health-realm
+      REALM_DISPLAY_NAME: Diecik
+      KEYCLOAK_FRONTEND_CLIENT_ID: health-app-frontend
+      KEYCLOAK_REQUIRE_EMAIL_VERIFICATION: "true"
+      KEYCLOAK_REALM_IMPORT_STRATEGY: ignore
+      KEYCLOAK_ALLOW_REALM_OVERWRITE: "false"
+    volumes:
+      - ../../health-app/keycloak-config/health-realm-realm.template.json:/opt/keycloak/conf/helti/health-realm-realm.template.json:ro
+      - ../../health-app/ops/keycloak/theme/helti:/opt/keycloak/themes/helti:ro
+    ports:
+      - "18080:8080"
+    cpus: 2
+    mem_limit: 1g
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      perf:
+        aliases: [keycloak]
+
+  backend:
+    image: ${PERF_BACKEND_IMAGE:-health-app-helti-app:latest}
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Tokens are fetched through localhost:18080, so that is the issuer; keys are read inside the network.
+      KEYCLOAK_ISSUER_URI: ${PERF_ISSUER_URI:-http://localhost:18080/realms/health-realm}
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/health-realm/protocol/openid-connect/certs
+      APP_KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      APP_MAIL_ENABLED: "false"
+      APP_SUBSCRIPTION_PRZELEWY24_ENABLED: "false"
+      APP_DEVICE_INTEGRATIONS_HEALTH_CONNECT_ENABLED: "false"
+      APP_DEVICE_INTEGRATIONS_GARMIN_ENABLED: "false"
+      SERVER_FORWARD_HEADERS_STRATEGY: NONE
+      # Same pool as production (prod-edge default).
+      SPRING_R2DBC_POOL_INITIAL_SIZE: "2"
+      SPRING_R2DBC_POOL_MIN_IDLE: "2"
+      SPRING_R2DBC_POOL_MAX_SIZE: "12"
+      # JVM settings come from the image, as in ECS. Experiments go through local/jvm-experiment.yml.
+    ports:
+      - "18081:8081"
+    volumes:
+      - ../results/local/jvm:/jvm
+    cpus: 0.5
+    mem_limit: 1g
+    memswap_limit: 1g
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - perf
+
+volumes:
+  pgdata:
+
+networks:
+  perf:

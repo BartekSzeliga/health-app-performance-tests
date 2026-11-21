@@ -1,0 +1,7 @@
+# JVM experiment on top of docker-compose.yml, never in the app code. It replaces the image's JAVA_TOOL_OPTIONS:
+#   PERF_JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=50" \
+#     docker compose -f local/docker-compose.yml -f local/jvm-experiment.yml up -d backend
+services:
+  backend:
+    environment:
+      JAVA_TOOL_OPTIONS: ${PERF_JAVA_TOOL_OPTIONS:?set PERF_JAVA_TOOL_OPTIONS for the experiment}

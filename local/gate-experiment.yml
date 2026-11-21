@@ -1,0 +1,8 @@
+# Generator gate experiment on top of docker-compose.yml (configuration only, see DietGeneratorGateFilter):
+#   PERF_GATE_MAX_CONCURRENT=4 PERF_BACKEND_IMAGE=<image> \
+#     docker compose -f local/docker-compose.yml -f local/gate-experiment.yml up -d backend
+services:
+  backend:
+    environment:
+      APP_DIET_GENERATOR_GATE_MAX_CONCURRENT: ${PERF_GATE_MAX_CONCURRENT:?set PERF_GATE_MAX_CONCURRENT}
+      APP_DIET_GENERATOR_GATE_MAX_QUEUED: ${PERF_GATE_MAX_QUEUED:-16}

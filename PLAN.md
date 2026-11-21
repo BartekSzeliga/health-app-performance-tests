@@ -331,7 +331,7 @@ są oznaczone jako eksperyment.
   `SpecialistPackageJob` najpierw warunkowo stawiamy znacznik (`UPDATE … WHERE reminder_sent_at IS NULL`), a mail
   wysyła tylko instancja, która go postawiła. Ten wzorzec ma już `StudentLicenseService`. Gdy mail się nie uda,
   zdejmujemy znacznik, żeby następny przebieg spróbował ponownie. Bez migracji i bez kosztu.
-  **Wdrożone 2026-11-21 na `dev` (niezacommitowane).** Test integracyjny puszcza dwa przebiegi joba naraz: na starym
+  **Wdrożone 2026-11-21 na `dev` (commit `34133520`).** Test integracyjny puszcza dwa przebiegi joba naraz: na starym
   kodzie mail wychodzi 2 razy, na nowym raz.
 - **N6:** priorytet generacji dietetyków w bramce (`DietGeneratorGate`). Zamiast jednej kolejki FIFO są trzy: trasy
   `/api/trainer/…`, potem klienci indywidualni, potem publiczne demo. Każda ma własny limit kolejki i czasu
@@ -576,7 +576,32 @@ w AWS to tylko dodatkowy ruch. Liniowo z liczbą firm rosną natomiast:
 Konta deweloperskie Apple i Google należą do klienta. Te pozycje warto wycenić w godzinach i doliczyć do marży
 planu 600 zł.
 
-## 11. O czym łatwo zapomnieć
+### 10.4 Szacunek pojemności przed pomiarem na AWS (2026-11-21)
+
+**Zastąpiony pomiarem:** `reports/2026-11-21-aws-dev-pojemnosc.md`. Szacunek był zbyt ostrożny. W pomiarze 2× 0,5 vCPU
+obsłużyło 300 jednostek bez błędów (53% CPU), a bezpiecznie z zapasem na padnięcie taska ok. 100. 2× 1 vCPU obsłużyło
+600 (70% CPU), a bezpiecznie ok. 300. Ograniczeniem jest zimny start nowego taska, a nie moc w normalnej pracy.
+
+Szacunek poniżej zostaje dla porównania. Wyliczony z lokalnych pomiarów generatora i założeń ruchu.
+
+**Założenia:**
+- Fargate x86 liczy 2–3 razy wolniej niż laptop przy tym samym limicie CPU.
+- Zwykłe żądanie kosztuje 10–20 ms CPU.
+- Jednostka (dietetyk i 60 klientów) robi ok. 6–7 tys. żądań dziennie. Wliczony jest polling panelu: czat co 5 s,
+  postęp co 30 s, tylko przy widocznej karcie. W szczycie daje to ok. 0,5 żądania/s na jednostkę.
+- Generator: szkic planu to 7–14 dni.
+
+| Backend (Keycloak 2× 0,5 vCPU) | Generator, 7-dniowe/min | Zwykłe API przy 70% CPU | Nasycenie | W miarę bezpiecznie |
+|---|---|---|---|---|
+| 2× 0,5 vCPU / 1 GB | 250–380 | 35–70 żądań/s | ~100–200 dietetyków | ~60 |
+| 2× 1 vCPU / 2 GB | 500–760 | 70–140 żądań/s | ~200–400 | ~120–150; wcześniej RDS t4g.small |
+
+**Co z tego wynika:**
+- Wąskim gardłem jest zwykłe API: polling panelu i skoki od klientów. Generator nim nie jest, nawet gdy wszyscy
+  dietetycy planują naraz.
+- „Bezpiecznie” znaczy, że po padnięciu jednego taska drugi uniesie szczyt do czasu startu zastępczego (3–5 min).
+- Keycloak przy tej skali prawie nie liczy: kilka logowań na minutę i ok. 1 odświeżenie tokenu na sekundę. Pierwszym
+  powodem do zmiany będzie pamięć (0,5 vCPU / 2 GB, +3,7 USD/task), a nie CPU.
 
 Punkty z ★ wynikają z dzisiejszej analizy kodu i infrastruktury.
 

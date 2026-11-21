@@ -14,7 +14,8 @@ import java.util.stream.Collectors;
 
 /**
  * A synthetic test account. {@code canary} is a marker unique to this user that is planted in their data and must
- * never show up in a response to anyone else (data isolation check I-1).
+ * never show up in a response to anyone else (data isolation check I-1). For a dietitian's client,
+ * {@code trainerClientId} is the dietitian's card of this client and {@code planId} the published plan.
  */
 public record PerfUser(
         String username,
@@ -23,12 +24,19 @@ public record PerfUser(
         String role,
         String unit,
         String canary,
-        String keycloakId
+        String keycloakId,
+        String trainerClientId,
+        String planId
 ) {
 
     public static final String ROLE_INDIVIDUAL = "individual";
     public static final String ROLE_DIETITIAN = "dietitian";
     public static final String ROLE_CLIENT = "client";
+    public static final String ROLE_ADMIN = "admin";
+
+    public PerfUser withClientCard(String cardId, String publishedPlanId) {
+        return new PerfUser(username, email, password, role, unit, canary, keycloakId, cardId, publishedPlanId);
+    }
 
     public static List<PerfUser> load(Path file) {
         if (!Files.exists(file)) {

@@ -107,6 +107,10 @@ public class GeneratorCapacitySimulation extends Simulation {
         HttpProtocolBuilder protocol = http.baseUrl(env.apiBase().toString())
                 .acceptHeader("application/json")
                 .userAgentHeader("diecik-perf/" + env.name());
+        // Over the internet (AWS dev) reuse connections, so TCP/TLS set-up from the test machine is not measured.
+        if (Boolean.getBoolean("perf.shareConnections")) {
+            protocol = protocol.shareConnections();
+        }
 
         setUp(
                 generator.injectClosed(injection),

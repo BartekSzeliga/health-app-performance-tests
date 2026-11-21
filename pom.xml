@@ -32,6 +32,13 @@
             <version>${jackson.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- Seeding only: stands in for the client clicking the verification e-mail (mail is off in test environments). -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.10</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

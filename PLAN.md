@@ -742,6 +742,7 @@ dla klastra Keycloaka, przypomnienia mailowe bez duplikatów przy 2 taskach.
 - W-07 (test długi) zastępuje tydzień obserwacji prod z pushem: CPU, połączenia na ALB i do RDS, 429 na
   `/api/events`, wpisy `Live event channel lost`;
 - W-05, W-06, W-08, W-10–W-13, W-15, W-16 i smoke w CI: niski priorytet przy obecnym ruchu;
-- drobne poprawki: N6 (priorytet dietetyków w generatorze, wstrzymany), 409 zamiast 500 przy ponownym ręcznym
-  nadaniu planu, `keycloakdb` w Terraform lub przewodniku, limity na 4 trasach generatora trenera.
+- drobne poprawki: N6 (priorytet dietetyków w generatorze, wstrzymany), `keycloakdb` w Terraform lub przewodniku,
+  limity na 4 trasach generatora trenera. 409 przy ponownym ręcznym nadaniu planu: zrobione, na prod od 2026-11-22
+  (obraz `3afd4fe6`).
 

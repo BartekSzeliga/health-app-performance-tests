@@ -120,6 +120,10 @@ def keycloak_admin_credentials():
 
 class KeycloakAdmin:
     def __init__(self):
+        self.base = f'{KEYCLOAK_BASE}/admin/realms/{REALM}'
+        self.login()
+
+    def login(self):
         user, password = keycloak_admin_credentials()
         form = urllib.parse.urlencode({'client_id': 'admin-cli', 'grant_type': 'password', 'username': user,
                                        'password': password}).encode()
@@ -127,10 +131,13 @@ class KeycloakAdmin:
                                      method='POST')
         with urllib.request.urlopen(req, timeout=30) as res:
             self.token = json.loads(res.read())['access_token']
-        self.base = f'{KEYCLOAK_BASE}/admin/realms/{REALM}'
 
     def call(self, method, path, body=None):
-        return request(method, self.base + path, self.token, body)
+        res = request(method, self.base + path, self.token, body)
+        if res.status == 401:  # admin-cli tokens live 60 s; sign in again once
+            self.login()
+            res = request(method, self.base + path, self.token, body)
+        return res
 
     def ensure_user(self, username, email, password, roles=()):
         if not email.endswith(EMAIL_DOMAIN):
@@ -151,6 +158,13 @@ class KeycloakAdmin:
             available = {r['name']: r for r in self.call('GET', '/roles').json()}
             self.call('POST', f'/users/{user_id}/role-mappings/realm', [available[r] for r in roles if r in available])
         return user_id
+
+    def enable_password_grant(self, client_id):
+        """Test realms only (local or AWS dev): lets the tools sign synthetic accounts in without a browser."""
+        for client in self.call('GET', '/clients?clientId=' + urllib.parse.quote(client_id)).json() or []:
+            if not client.get('directAccessGrantsEnabled'):
+                client['directAccessGrantsEnabled'] = True
+                self.call('PUT', f"/clients/{client['id']}", client)
 
     def delete_user(self, user_id, username):
         if not username.startswith('iso-'):
@@ -174,6 +188,20 @@ class KeycloakAdmin:
             if client.get('attributes', {}).get('qa-fixture-owner') != 'isolation-20261122':
                 raise SystemExit(f'Refusing to delete a client this toolkit did not create: {client_id}')
             self.call('DELETE', f"/clients/{client['id']}")
+
+
+def db_execute(sql):
+    """Runs one SQL statement on the test database when tokens cannot come by mail (AWS dev: mail off).
+    ISO_DB_PORT is a local port forwarded to the database (SSM), ISO_DB_PASSWORD its password; psql runs in a
+    throwaway postgres:18 container."""
+    port, password = os.environ['ISO_DB_PORT'], os.environ['ISO_DB_PASSWORD']
+    out = subprocess.run(['docker', 'run', '--rm', '-e', 'PGPASSWORD', '-e', 'PGSSLMODE=require', 'postgres:18', 'psql',
+                          '-h', 'host.docker.internal', '-p', port, '-U', os.environ.get('ISO_DB_USER', 'postgres'),
+                          '-d', os.environ.get('ISO_DB_NAME', 'dietdb'), '-Atc', sql],
+                         env={**os.environ, 'PGPASSWORD': password}, capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(f'psql failed: {out.stderr.strip()[:300]}')
+    return out.stdout.strip()
 
 
 def save_private(path, data):

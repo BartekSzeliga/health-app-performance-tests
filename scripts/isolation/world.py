@@ -10,6 +10,8 @@ Usage: scripts/isolation/world.py build | cleanup
 """
 import datetime as dt
 import email
+import hashlib
+import os
 import re
 import secrets
 import sys
@@ -20,8 +22,8 @@ from email import policy
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (API_BASE, CLIENT_ID, EMAIL_DOMAIN, RESULTS, WORLD_FILE, KeycloakAdmin, Tokens, guard,  # noqa: E402
-                    load_world, request, save_private)
+from common import (API_BASE, CLIENT_ID, EMAIL_DOMAIN, RESULTS, WORLD_FILE, KeycloakAdmin, Tokens, db_execute,  # noqa: E402
+                    guard, load_world, request, save_private)
 
 PRO_PLAN = 'trainer_pro_monthly'
 TERMS_VERSION = '2026-11-15-r4'  # TermsPolicy.CURRENT_VERSION in the backend
@@ -50,6 +52,7 @@ class World:
     # --- accounts -------------------------------------------------------------------------------------------
     def accounts(self):
         admin = KeycloakAdmin()
+        admin.enable_password_grant(CLIENT_ID)
         for name, (side, kind, roles) in ACTORS.items():
             actor = self.data['actors'].get(name) or {
                 'username': f'iso-{name}', 'email': f'iso-{name}{EMAIL_DOMAIN}',
@@ -99,7 +102,28 @@ class World:
                 traceback.print_exc()
         self.save()
 
-    # --- mail -------------------------------------------------------------------------------------------------
+    # --- tokens -----------------------------------------------------------------------------------------------
+    def invitation_token(self, kind, ref, recipient, after, pattern=r'token=([A-Za-z0-9_-]{20,})'):
+        """The invitation token: from the local mail sink, or, on AWS dev (mail off, ISO_DB_PORT set), a known token
+        written as the hash of the open invitation of a test address. Accepting and linking still use the API."""
+        if not os.environ.get('ISO_DB_PORT'):
+            return self.mail_token(recipient, pattern=pattern, after=after)
+        if not recipient.endswith(EMAIL_DOMAIN):
+            raise RuntimeError(f'not a test address: {recipient}')
+        raw = secrets.token_urlsafe(32)
+        digest = hashlib.sha256(raw.encode()).hexdigest()
+        if kind == 'client':
+            sql = (f"UPDATE trainer_client_email_tokens t SET token_hash = '{digest}' FROM trainer_clients c "
+                   f"WHERE t.client_id = c.id AND c.id = '{ref}' AND c.email LIKE '%{EMAIL_DOMAIN}' "
+                   f"AND t.purpose = 'VERIFY_CLIENT_EMAIL' AND t.accepted_at IS NULL AND t.declined_at IS NULL")
+        else:
+            sql = (f"UPDATE organization_invitations SET token_hash = '{digest}' WHERE organization_id = '{ref}' "
+                   f"AND lower(email) = lower('{recipient}') AND status = 'PENDING' AND email LIKE '%{EMAIL_DOMAIN}'")
+        result = db_execute(sql)
+        if not result.endswith('1'):
+            raise RuntimeError(f'no open {kind} invitation for {recipient}: {result}')
+        return raw
+
     def mail_token(self, recipient, pattern=r'token=([A-Za-z0-9_-]{20,})', after=0.0):
         for _ in range(30):
             for file in sorted((RESULTS / 'mail').glob('*.eml'), reverse=True):
@@ -157,7 +181,7 @@ def link_client(w, specialist, client, key, org=None):
             specialist, 'POST', f'/api/organizations/{org}/clients',
             {'displayName': f'Klient {w.canary(client)}', 'email': email_addr, 'phone': None})
         w.ok(specialist, 'POST', f"/api/organizations/{org}/clients/{card['id']}/invite")
-        token = w.mail_token(email_addr, after=started - 1)
+        token = w.invitation_token('client', card['id'], email_addr, started - 1)
         w.call(client, 'POST', f'/api/trainer/client-invitations/{token}/accept')
         w.ok(client, 'POST', f'/api/trainer/client-invitations/{token}/link-account', {
             'confirmedOrganizationId': org,
@@ -171,7 +195,7 @@ def link_client(w, specialist, client, key, org=None):
                 'profile': {'gender': 'FEMALE', 'age': 34, 'weightKg': 68, 'heightCm': 168, 'activity': 'MODERATE',
                             'nutritionGoal': 'MAINTAIN'}})
         w.ok(specialist, 'POST', f"/api/trainer/clients/{card['id']}/email-verification")
-        token = w.mail_token(email_addr, after=started - 1)
+        token = w.invitation_token('client', card['id'], email_addr, started - 1)
         w.call(client, 'POST', f'/api/trainer/client-invitations/{token}/accept')
         w.ok(client, 'POST', f"/api/trainer/client-links/{card['id']}/link-account")
     return w.put(key, {'id': card['id'], 'status': 'LINKED', 'specialist': specialist, 'client': client,
@@ -271,8 +295,8 @@ def organization(w, side):
         w.ok(owner, 'POST', f'/api/organizations/{org_id}/invitations',
              {'email': w.data['actors'][member]['email'], 'role': 'DIETITIAN', 'clinicalAccess': False,
               'patientAccess': 'ASSIGNED'})
-        token = w.mail_token(w.data['actors'][member]['email'], pattern=r'(?:token=|invitations?/|zaproszeni[ae]/)([A-Za-z0-9_-]{20,})',
-                             after=started - 1)
+        token = w.invitation_token('org', org_id, w.data['actors'][member]['email'], started - 1,
+                                   pattern=r'(?:token=|invitations?/|zaproszeni[ae]/)([A-Za-z0-9_-]{20,})')
         w.ok(member, 'PUT', f'/api/organization-invitations/{token}/profile', {
             'displayName': f'Członek {w.canary(member)}', 'businessName': f'Firma {side.upper()}',
             'contactEmail': w.data['actors'][member]['email'], 'pdfBrandingMode': 'DIECIK', 'workScope': 'GABINET'})

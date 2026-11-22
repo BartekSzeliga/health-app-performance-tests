@@ -63,3 +63,7 @@ rezerwacje i oferty, plany i ich publikacje, dokumenty i PDF, ustawienia firmy.
   pokrycie tras (ile rozstrzygniętych, ile nie i dlaczego).
 
 Znalezisko krytyczne (cudze dane zdrowotne, czat, cudza firma) zgłaszam od razu, bez czekania na koniec etapu.
+
+**Runda 3 (2026-11-22, AWS dev, Przelewy24 sandbox):** płatności, faktury i rezerwacje sprawdzone na prawdziwym
+przepływie (`scripts/isolation/payments.py`, `pay_sandbox.mjs`); dev usunięty po teście. Wyniki w raporcie.
+

@@ -212,11 +212,52 @@ nadaje nowe ID albo przyjmuje tylko ID serii z tej samej sesji.
 Przy 2 taskach limity na użytkownika są więc faktycznie 2× wyższe. To nie dotyczy izolacji, tylko ochrony generatora.
 
 **Nadal nierozstrzygnięte albo niepokryte:**
-- **Rezerwacje:** wymagają opublikowanego publicznego profilu specjalisty (`published`, `activated_at`, robi to admin).
-- **Płatności i faktury subskrypcji, zamówienia firmy:** operatorzy płatności są lokalnie wyłączeni.
+- **Rezerwacje, płatności i faktury subskrypcji:** sprawdzone w trzeciej rundzie na dev (niżej).
+- **Zamówienia firmy** (`billing/checkout`).
 - **Integracje urządzeń; zatwierdzenie przepisu do społeczności przez admina.**
 - **Usuwanie prywatnego produktu z cudzym nagłówkiem firmy:** walidacja przed dostępem. Bez nagłówka wszyscy
   dostają 403.
+
+## Trzecia runda: płatności, faktury i rezerwacje na AWS dev (2026-11-22)
+
+**Środowisko:**
+- **Dev w AWS:** zbudowany na czas testu z obrazów commita `7e7a9d2b` (z poprawkami); backend 2× 0,5 vCPU / 2 GB, RDS `db.t4g.small`, katalog bez danych użytkowników.
+- **Przelewy24:** sandbox na kluczach Bartosza.
+- **Faktury:** PDF-y w prywatnej części bucketu S3.
+- **Poczta:** wyłączona; tokeny zaproszeń dostarczone przez bazę (tunel SSM), jak przy testach wydajności.
+- **Po teście:** środowisko usunięte (sekcja niżej).
+
+**Przepływ (prawdziwy, w sandboxie):**
+- 4 konta: checkout B2C `premium_monthly`, a P24 zarejestrowało transakcje;
+- opłacenie w testowym banku sandboxa (`scripts/isolation/pay_sandbox.mjs`, Playwright);
+- powiadomienie P24 dotarło na `api.dev.diecik.com` i po weryfikacji 4/4 zamówienia mają status `PAID`;
+- faktury: prośba klienta (200), wgranie PDF i wystawienie przez admina (200), pobranie przez klienta (200, podpisany link do S3).
+
+**Rezerwacje:**
+- specjalista włączył rezerwacje online i opublikował publiczny profil;
+- klient zarezerwował termin (201).
+
+| Atak (`scripts/isolation/payments.py attack`) | Wynik |
+|---|---|
+| Cudze zamówienie: odczyt, anulowanie, prośba o fakturę, link do faktury (13 kont × 4 zamówienia × 4 trasy) | 208 × 404 |
+| Historia płatności innego konta | nigdzie nie zawiera cudzego zamówienia |
+| Trasy faktur admina (PDF, anulowanie) jako specjalista, użytkownik i admin firmy | 24 × 403 |
+| Link do PDF faktury bez podpisu | 403 (bucket prywatny); z podpisem 200, ważny 600 s |
+| Cudza rezerwacja: odczyt; akceptacja, odrzucenie i anulowanie | odczyt 12 × 404; akceptacja, odrzucenie, anulowanie po 12 × 403 |
+| `/api/booking-requests/mine` innego klienta | bez cudzej rezerwacji |
+| Dwóch klientów rezerwuje ten sam termin w tej samej chwili | 201 i 409 „Termin jest już zarezerwowany”, jedna rezerwacja |
+| Macierz odczytu na dev (`idor.py --no-writes`, 6766 żądań) | zamówienia, faktury i rezerwacje objęte; druga strona dostaje tylko odmowy, jedyne 2xx to produkt z globalnego katalogu |
+
+**Uwaga:** na dev zaproszenie członka do firmy zwraca 503 `INVITATION_DELIVERY_FAILED`, bo wymaga wysłania maila,
+a poczta jest tam wyłączona. Na prod poczta działa; to tylko ograniczenie środowiska testowego.
+
+**Sprzątanie:**
+- **AWS:** dev-edge (37 zasobów) i podstawa dev (33 zasoby) usunięte; ECR i bucket z fakturami opróżnione przed
+  usunięciem. Sekrety w tym samym stanie co przed odbudową: 3 oczekują na usunięcie, 2 aktywne (`booking-google`,
+  `device-integrations`, chronione przed usunięciem).
+- **Lokalnie:** obrazy usunięte, wylogowanie z ECR, pliki `terraform.tfvars` dev usunięte.
+- **Zostaje:** plik z kluczami sandbox Bartosza (`health-app-infra/envs/dev/p24-sandbox.auto.tfvars`, ignorowany przez
+  git) do ponownego użycia albo usunięcia.
 
 ## Odtworzenie drugiej rundy
 

@@ -88,3 +88,9 @@ python3 scripts/isolation/world.py cleanup        # removes the accounts and Key
 
 `results/isolation/world.json` holds the test passwords (mode 0600, git-ignored); `cleanup` deletes it.
 
+On AWS dev (rebuilt for the run; mail is off there, so invitation tokens are written to the database through an SSM
+port forward): set `ISO_API_BASE`, `ISO_KEYCLOAK_BASE`, `ISO_CLIENT_ID`, `ISO_KC_ADMIN_USER/PASSWORD`,
+`ISO_DB_PORT`, `ISO_DB_PASSWORD` and `ISO_RESULTS=results/isolation-dev`, then build the world and run
+`scripts/isolation/payments.py checkout | status | invoices | bookings | attack`. Sandbox payments are completed by
+`node scripts/isolation/pay_sandbox.mjs <checkoutUrl> <screenshotsDir>` (Przelewy24 SANDBOX only).
+

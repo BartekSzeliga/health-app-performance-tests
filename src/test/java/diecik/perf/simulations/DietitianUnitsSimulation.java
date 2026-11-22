@@ -70,6 +70,8 @@ public class DietitianUnitsSimulation extends Simulation {
     private final Duration stepDuration = Duration.ofSeconds(Integer.getInteger("perf.stepSeconds", 180));
     private final double trafficFactor = Double.parseDouble(System.getProperty("perf.trafficFactor", "1"));
     private final boolean generator = Boolean.parseBoolean(System.getProperty("perf.generator", "true"));
+    /** false: the apps get live events (GET /api/events) and do not poll the chat; streams come from LiveEventsCheck. */
+    private final boolean chatPolling = Boolean.parseBoolean(System.getProperty("perf.chatPolling", "true"));
     private volatile long startNanos = System.nanoTime();
 
     private final FeederBuilder<Object> clientFeeder = listFeeder(clients.stream()
@@ -167,9 +169,11 @@ public class DietitianUnitsSimulation extends Simulation {
                 inject(appOpen, APP_OPEN),
                 inject(planView, PLAN_VIEW),
                 inject(water, WATER),
-                inject(clientChat, CLIENT_CHAT_POLL),
-                inject(dietitianChat, DIETITIAN_CHAT_POLL),
                 inject(cardView, CARD_VIEW)));
+        if (chatPolling) {
+            populations.add(inject(clientChat, CLIENT_CHAT_POLL));
+            populations.add(inject(dietitianChat, DIETITIAN_CHAT_POLL));
+        }
         if (generator) {
             populations.add(inject(draft, DRAFT));
         }
@@ -191,9 +195,9 @@ public class DietitianUnitsSimulation extends Simulation {
         dietitians.forEach(dietitian -> tokens.accessToken(dietitian.username()));
         startNanos = System.nanoTime();
         Instant start = Instant.now();
-        System.out.printf("Dietitian units: env=%s steps=%s step=%ss factor=%s generator=%s seeded=%d dietitians,"
-                        + " %d clients%n", env.name(), Arrays.toString(steps), stepDuration.toSeconds(), trafficFactor,
-                generator, dietitians.size(), clients.size());
+        System.out.printf("Dietitian units: env=%s steps=%s step=%ss factor=%s generator=%s chatPolling=%s seeded=%d"
+                        + " dietitians, %d clients%n", env.name(), Arrays.toString(steps), stepDuration.toSeconds(),
+                trafficFactor, generator, chatPolling, dietitians.size(), clients.size());
         for (int index = 0; index < steps.length; index++) {
             Instant from = start.plus(stepDuration.multipliedBy(index));
             System.out.printf("STEP u=%d from=%s to=%s%n", steps[index], from, from.plus(stepDuration));

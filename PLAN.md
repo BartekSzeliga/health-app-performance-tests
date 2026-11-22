@@ -345,6 +345,8 @@ są oznaczone jako eksperyment.
 
 ## 8. Izolacja danych (współbieżność i autoryzacja)
 
+> Przeniesione do [PLAN-izolacja.md](PLAN-izolacja.md); poniżej pierwotny zakres.
+
 **I-1. Kanarki pod obciążeniem.** Każdy użytkownik testowy ma unikalny znacznik w swoich danych, np.
 `perf-u0042-<losowe>` w nazwie własnego posiłku, notatce i profilu. Zna go tylko on. W Gatlingu każda odpowiedź jest
 sprawdzana na dwa sposoby:
@@ -665,40 +667,30 @@ Punkty z ★ wynikają z dzisiejszej analizy kodu i infrastruktury.
 
 ## 12. Etapy
 
-- [ ] **Etap 0. Decyzje** (sekcja 13) i ewentualna zgoda na ALB access logs (7 dni) oraz agregaty z prod.
+Stan na 2026-11-22: **etap wydajności zamknięty** (podsumowanie w sekcji 15). Izolacja danych przeszła do osobnego
+planu: [PLAN-izolacja.md](PLAN-izolacja.md).
+
+- [x] **Etap 0. Decyzje** (sekcja 13). ALB access logs i agregaty z prod niepotrzebne: model ruchu z sekcji 7.1.
 - [x] **Etap 1. Szkielet projektu** (2026-11-21): Maven, Gatling 3.16.1, JUnit 6.1.3, konfiguracje `local` i `dev`,
   `ProdGuard` z testami, README.
-- [ ] **Etap 2. Lokalnie (L):**
+- [x] **Etap 2. Lokalnie (L):**
   - [x] stack z limitami prod (`local/`), klon katalogu i realmu, seed kont, tokeny;
   - [x] W-02 i W-03 oraz eksperyment F1: raport `reports/2026-11-21-lokalnie-generator.md`. H1–H3 potwierdzone;
     70% heapu przy 1 GB kończy się OOM kill;
-  - [ ] W-10 (limiter był widoczny przypadkiem), W-11, W-13, H4–H6 z JFR;
-  - [ ] seed jednostek dietetyka (plan PRO, 60 klientów, powiązania) i scenariusz W-14/W-15 lokalnie.
-- [ ] **Etap 3. Izolacja lokalnie:**
-  - [ ] I-1 do I-5;
-  - [ ] inwentarz tras i macierz IDOR (najpierw dane zdrowotne, czat, organizacje, pary).
-
-  Znaleziony błąd izolacji naprawiamy (przez `dev`) przed dalszymi testami.
-- [ ] **Etap 4. Dev w AWS (T0):**
-  - [ ] tfvars dev w rozmiarach prod i odbudowa według przewodnika. Jeśli potrzebne są zmiany kodu Terraform
-    (parzystość z prod), przedstawiamy listę do akceptacji;
-  - [ ] obrazy backendu i Keycloaka z prod, katalog, seed, EC2 do generowania ruchu, monitoring;
-  - [ ] W-01 do W-13, z zamrożonymi pushami na `dev`;
-  - [ ] wyłączenie `dev-edge` między sesjami.
-- [ ] **Etap 5. Skalowanie i plan napraw:**
-  - [ ] konfiguracje T2 i T3 oraz W-09 (przez tfvars, bez zmian w kodzie);
-  - [ ] plan napraw z dowodami i wyceną (F1–F4, błędy izolacji, joby, limitery); wdrożenie tylko po zgodzie, przez
-    `dev`, potem powtórka W-02, W-03 i W-05;
-  - [ ] stan dev po testach według decyzji 7.
-- [ ] **Etap 6. Raport:**
-  - [ ] pojemność każdej konfiguracji w jednostkach dietetyka (N_max), próg skalowania i koszt infrastruktury na
-    dietetyka (uzupełniona tabela z sekcji 10.3);
-  - [ ] lista błędów;
-  - [ ] rekomendacja;
-  - [ ] smoke w CI;
-  - [ ] sprzątanie.
-
-Szacunek: ok. 6–9 dni pracy plus Twoje akceptacje na etapach 0, 3 (poprawki), 4 i 5 (AWS i deploy na `dev`).
+  - [x] seed jednostek dietetyka (plan PRO, klienci, powiązania, opublikowane plany).
+  - Nie robione (decyzja 2026-11-22, niski priorytet): W-10, W-11, W-13, H4–H6 z JFR.
+- [ ] **Etap 3. Izolacja:** przeniesiona do [PLAN-izolacja.md](PLAN-izolacja.md).
+- [x] **Etap 4. Dev w AWS:** odbudowa w rozmiarach prod (2026-11-21 i 2026-11-22), W-01, W-02, W-04/W-14, W-09
+  (padnięcie taska), Keycloak przy padnięciu węzła, push end-to-end; dev usunięty po każdej sesji.
+  - Nie robione: W-05 (breakpoint, zastąpiony ekstrapolacją z CPU), W-06, W-07, W-08 na 0,25 vCPU, W-12, W-15, W-16.
+- [x] **Etap 5. Skalowanie i naprawy:**
+  - [x] T2 (2× 0,5 vCPU) i T3 (2× 1 vCPU), raport `reports/2026-11-21-aws-dev-pojemnosc.md`;
+  - [x] naprawy po zgodzie: N1 (heap 50%), N3 (bramka generatora), N5 (przypomnienia przy 2 taskach), push zamiast
+    odpytywania, `slow_start`, 2 GB, Graviton; raport `reports/2026-11-22-push-slow-start-graviton.md`;
+  - [x] wdrożone na prod 2026-11-21 i 2026-11-22 (sekcja 15);
+  - [x] dev po testach: destroy (0 USD).
+- [x] **Etap 6. Raport:** pojemność, próg skalowania i koszt w trzech raportach w `reports/`.
+  - Nie robione: smoke w CI.
 
 ## 13. Decyzje do podjęcia
 
@@ -729,3 +721,27 @@ Szacunek: ok. 6–9 dni pracy plus Twoje akceptacje na etapach 0, 3 (poprawki), 
 - Zapomniane środowisko `dev` generuje koszt: ok. 5–9 USD na dobę. Chroni przed tym budżet z alertem i `destroy`
   po każdej sesji.
 - Wykrycie IDOR lub wycieku danych zatrzymuje testy wydajności do czasu poprawki.
+
+## 15. Zamknięcie etapu wydajności (2026-11-22)
+
+**Wynik.** Cel na 12 miesięcy (40 dietetyków, czyli co najmniej 57 jednostek) jest spełniony z dużym zapasem:
+
+| Wariant | Pojemność (model z sekcji 7.1) | Uwagi |
+|---|---|---|
+| 2× 0,5 vCPU / 1 GB x86, odpytywanie czatu | ok. 100 dietetyków bezpiecznie | 2026-11-21 |
+| 2× 1 vCPU x86, odpytywanie czatu | ok. 600 jednostek przy 70% CPU | 2026-11-21 |
+| 2× 0,5 vCPU / 2 GB ARM, push | ok. 400 dietetyków bezpiecznie, ponad 800 jednostek przy 70% CPU | 2026-11-22, ekstrapolacja z 400 jednostek |
+
+**Na prod od 2026-11-22:** backend 0,5 vCPU / 2 GB i Keycloak 0,25 vCPU / 1 GB na Graviton (ARM64), po 1 tasku;
+push przez `GET /api/events` (Postgres LISTEN/NOTIFY), `slow_start` 90 s, `deregistration_delay` 60 s, reguła 57800
+dla klastra Keycloaka, przypomnienia mailowe bez duplikatów przy 2 taskach.
+
+**Otwarte, świadomie odłożone:**
+- prod ma 1 task backendu i 1 Keycloaka (Keycloak 0,25 vCPU), a pojemność mierzyliśmy dla 2 tasków (Keycloak
+  0,5 vCPU). Przy pierwszym płacącym dietetyku: `desired_count = 2` i `keycloak_task_cpu = 512`;
+- W-07 (test długi) zastępuje tydzień obserwacji prod z pushem: CPU, połączenia na ALB i do RDS, 429 na
+  `/api/events`, wpisy `Live event channel lost`;
+- W-05, W-06, W-08, W-10–W-13, W-15, W-16 i smoke w CI: niski priorytet przy obecnym ruchu;
+- drobne poprawki: N6 (priorytet dietetyków w generatorze, wstrzymany), 409 zamiast 500 przy ponownym ręcznym
+  nadaniu planu, `keycloakdb` w Terraform lub przewodniku, limity na 4 trasach generatora trenera.
+

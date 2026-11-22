@@ -67,3 +67,24 @@ Any setting can be overridden with `-Dperf.<key>` or `PERF_<KEY>`. See `TestEnvi
 ```bash
 mvn test        # ProdGuard and other toolkit tests, no stack needed
 ```
+
+## Data isolation
+
+Plan: [PLAN-izolacja.md](PLAN-izolacja.md). Tools in `scripts/isolation/` (Python 3 standard library only), run
+against a local QA backend (port 8086, its own empty database) and the local Keycloak; production and anything but
+localhost or AWS dev are refused.
+
+```bash
+python3 scripts/isolation/smtp_sink.py &          # local mail sink, test recipients only, never relays
+python3 scripts/route_inventory.py                # routes from the controller sources
+python3 scripts/isolation/world.py build          # @perf.diecik.invalid accounts and data on sides A and B
+python3 scripts/isolation/idor.py                 # authorization matrix (owner control, then attacks)
+python3 scripts/isolation/writes.py               # writes with valid bodies, IDs in body and header
+python3 scripts/isolation/canaries.py --seconds 60
+python3 scripts/isolation/races.py --users 12      # concurrent generations, commits, chat, orders, plan saves
+ISO_API_BASE_B=http://localhost:8087 python3 scripts/isolation/instances.py  # with a second backend on 8087
+python3 scripts/isolation/world.py cleanup        # removes the accounts and Keycloak clients again
+```
+
+`results/isolation/world.json` holds the test passwords (mode 0600, git-ignored); `cleanup` deletes it.
+
